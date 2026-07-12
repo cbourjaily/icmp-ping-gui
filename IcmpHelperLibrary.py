@@ -1,9 +1,18 @@
 # #################################################################################################################### #
+# Program Name: IcmpHelperLibrary.py                                                                                   #
+# Author: Christopher Vote                                                                                             #
+#                                                                                                                      #
+# Description:                                                                                                         #
+# This module provides helper classes and functions for constructing, sending, and processing ICMP packets.            #
+# It implements the core functionality required for network diagnostic tools such as ping utilities, including         #
+# packet creation, checksum calculation, transmission, and response handling.                                          #
+#                                                                                                                      #
+#                                                                                                                      #
+# #################################################################################################################### #
+
+
+# #################################################################################################################### #
 # Imports                                                                                                              #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
 # #################################################################################################################### #
 import os
 from socket import *
@@ -16,20 +25,12 @@ import statistics               # For mean
 # #################################################################################################################### #
 # Class IcmpHelperLibrary                                                                                              #
 #                                                                                                                      #
+# Description:                                                                                                         #
+# Provides a collection of ICMP networking helper methods for creating packets, sending echo requests, and processing  #
+# replies from remote hosts.                                                                                           #
 #                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-# #################################################################################################################### #
+########################################################################################################################
+
 class IcmpHelperLibrary:
     # ################################################################################################################ #
     # Class IcmpPacket                                                                                                 #
@@ -38,15 +39,8 @@ class IcmpHelperLibrary:
     # https://www.iana.org/assignments/icmp-parameters/icmp-parameters.xhtml                                           #
     #                                                                                                                  #
     #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
     # ################################################################################################################ #
+    
     class IcmpPacket:
         # ############################################################################################################ #
         # IcmpPacket Class Scope Variables                                                                             #
