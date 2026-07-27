@@ -233,16 +233,24 @@ class IcmpHelperLibrary:
             self.__dataRaw = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz"
             self.__packAndRecalculateChecksum()
 
-        def sendEchoRequest(self):
+        def sendEchoRequest(self, isTraceroute=False):
             if len(self.__icmpTarget.strip()) <= 0 | len(self.__destinationIpAddress.strip()) <= 0:
                 self.setIcmpTarget("127.0.0.1")
 
-            mySocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
+            if isTraceroute:
+                mySocket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)
+                headerOffset = 20
+            else:
+                mySocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
+                headerOffset = 0
+
             mySocket.settimeout(self.__ipTimeout)
             mySocket.bind(("", 0))
-            actualIdentifier = mySocket.getsockname()[1]    # kernal-assigned port = actual ICMP identifier
-            self.setPacketIdentifier(actualIdentifier)
             mySocket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', self.getTtl()))  # Unsigned int - 4 bytes
+
+            if not isTraceroute:
+                actualIdentifier = mySocket.getsockname()[1]    # kernal-assigned port = actual ICMP identifier
+                self.setPacketIdentifier(actualIdentifier)
 
             try:
                 mySocket.sendto(b''.join([self.__header, self.__data]), (self.__destinationIpAddress, 0))
@@ -250,11 +258,7 @@ class IcmpHelperLibrary:
 
                 # Set timeLeft to global self.__ipTimeout global variable
                 timeLeft = self.__ipTimeout
-                pingStartTime = time.time()
-                startedSelect = time.time()
                 whatReady = select.select([mySocket], [], [], timeLeft)
-                endSelect = time.time()
-                howLongInSelect = (endSelect - startedSelect)
 
                 if whatReady[0] == []:  # Timeout
                     print("  *        *        *        *        *    Request timed out.")
@@ -262,31 +266,37 @@ class IcmpHelperLibrary:
                 while True:
                     recvPacket, addr = mySocket.recvfrom(1024)  # recvPacket - bytes object representing data received
                     timeReceived = time.time()
-                    icmpType, icmpCode = recvPacket[0:2]
+                    icmpType, icmpCode = recvPacket[headerOffset:headerOffset + 2]
 
                     if icmpType == 0:
-                        recvIdentifier = struct.unpack("!H", recvPacket[4:6])[0]
+                        recvIdentifier = struct.unpack("!H", recvPacket[headerOffset + 4:headerOffset + 6])[0]
                     else:
-                        ihl = (recvPacket[28] & 0x0F) * 4
-                        recvIdentifier = struct.unpack("!H", recvPacket[28 + ihl + 4:28 + ihl + 6])[0]
+                        ihl = (recvPacket[headerOffset + 8] & 0x0F) * 4
+                        recvIdentifier = struct.unpack(
+                            "!H",
+                            recvPacket[headerOffset + 8 + ihl + 4:headerOffset + 8 + ihl + 6]
+                        )[0]
 
                     rtt = (timeReceived - timeSent) * 1000
 
                     # Adjust offset for ICMP type
                     if icmpType == 11:                      # Time exceeded
-                        icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self)
+                        icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self,
+                                                                                 headerOffset=headerOffset)
                         self.__validateIcmpReplyPacketWithOriginalPingData(icmpReplyPacket)
                         icmpReplyPacket.printResultToConsole(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
                         return icmpType
 
                     elif icmpType == 0:                     # Echo reply
-                        icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self)
+                        icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self,
+                                                                                 headerOffset=headerOffset)
                         self.__validateIcmpReplyPacketWithOriginalPingData(icmpReplyPacket)
                         icmpReplyPacket.printResultToConsole(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
                         return rtt
 
                     elif icmpType == 3:                     # Destination unreachable
-                        icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self)
+                        icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self,
+                                                                                 headerOffset=headerOffset)
                         self.__validateIcmpReplyPacketWithOriginalPingData(icmpReplyPacket)
                         icmpReplyPacket.printResultToConsole(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
                         return icmpType
@@ -296,6 +306,9 @@ class IcmpHelperLibrary:
 
             except timeout:
                 pass
+            except PermissionError:
+                print("Permission denied: traceroute requires elevated privileges (run with sudo).")
+                return None
 
             finally:
                 mySocket.close()
@@ -378,28 +391,25 @@ class IcmpHelperLibrary:
         #                                                                                                              #
         # ############################################################################################################ #
         def getReplyIcmpType(self):
-            return self.__unpackByFormatAndPosition("B", 0)
+            return self.__unpackByFormatAndPosition("B", self.__headerOffset + 0)
 
         def getReplyIcmpCode(self):
-            return self.__unpackByFormatAndPosition("B", 1)
+            return self.__unpackByFormatAndPosition("B", self.__headerOffset + 1)
 
         def getReplyIcmpHeaderChecksum(self):
-            return self.__unpackByFormatAndPosition("H", 2)
+            return self.__unpackByFormatAndPosition("H", self.__headerOffset + 2)
 
         def getReplyIcmpIdentifier(self):
-            return self.__unpackByFormatAndPosition("H", 4)
+            return self.__unpackByFormatAndPosition("H", self.__headerOffset + 4)
 
         def getReplyIcmpSequenceNumber(self):
-            return self.__unpackByFormatAndPosition("H", 6)
+            return self.__unpackByFormatAndPosition("H", self.__headerOffset + 6)
 
         def getReplyDateTimeSent(self):
-            # This accounts for bytes 28 through 35 = 64 bits
-            return self.__unpackByFormatAndPosition("d", 8)   # Used to track overall round trip time
-                                                               # time.time() creates a 64 bit value of 8 bytes
+            return self.__unpackByFormatAndPosition("d", self.__headerOffset + 8)
 
         def getReplyIcmpData(self):
-            # This accounts for bytes 36 to the end of the packet.
-            return self.__recvPacket[16:].decode('utf-8')
+            return self.__recvPacket[self.__headerOffset + 16:].decode('utf-8')
 
         # _isValid getters
         # getters and setters for icmpIdentifier_isValid and seq number, data
@@ -489,7 +499,6 @@ class IcmpHelperLibrary:
     def __sendIcmpEchoRequest(self, host):
         print("sendIcmpEchoRequest Started...") if self.__DEBUG_IcmpHelperLibrary else 0
 
-        pingCount = 4
         # Save rtt responses in order to calculate statistics
         rttBuffer = []
 
@@ -570,7 +579,7 @@ class IcmpHelperLibrary:
             icmpPacket.setIcmpTarget(host)
 
             # Get icmpType as return value in order to detect end
-            icmpType = icmpPacket.sendEchoRequest()                                     # Build IP
+            icmpType = icmpPacket.sendEchoRequest(isTraceroute=True)                     # Build IP
 
             # toggle isEnd if the icmpType is 3 or 0 (type zero returns RTT in sendEchoRequst() which is a float)
             if icmpType == 3 or icmpType == 0 or isinstance(icmpType, float):
@@ -587,9 +596,9 @@ class IcmpHelperLibrary:
     # IcmpHelperLibrary Public Functions                                                                               #
     #                                                                                                                  #
     # ################################################################################################################ #
-    def sendPing(self, targetHost):
+    def sendPing(self, targetHost, pingCount=4):
         print("ping Started...") if self.__DEBUG_IcmpHelperLibrary else 0
-        self.__sendIcmpEchoRequest(targetHost)
+        self.__sendIcmpEchoRequest(targetHost, pingCount)
 
     def traceRoute(self, targetHost):
         print("traceRoute Started...") if self.__DEBUG_IcmpHelperLibrary else 0
@@ -606,13 +615,13 @@ def main():
 
     # Choose one of the following by uncommenting out the line
     # icmpHelperPing.sendPing("209.233.126.254")
-    # icmpHelperPing.sendPing("www.google.com")
+    icmpHelperPing.sendPing("www.google.com")
     # icmpHelperPing.sendPing("gaia.cs.umass.edu")
     # icmpHelperPing.traceRoute("164.151.129.20")
     # icmpHelperPing.traceRoute("122.56.99.243")
-    icmpHelperPing.traceRoute("google.com")
+    # icmpHelperPing.traceRoute("google.com")
     # icmpHelperPing.traceRoute("8.8.8.8")
-    #icmpHelperPing.sendPing("8.8.8.8")
+    # icmpHelperPing.sendPing("8.8.8.8")
 
     # unreachable maybe
     # icmpHelperPing.traceRoute("210.152.243.234")                    # Samina
