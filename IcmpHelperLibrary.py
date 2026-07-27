@@ -7,7 +7,6 @@
 # It implements the core functionality required for network diagnostic tools such as ping utilities, including         #
 # packet creation, checksum calculation, transmission, and response handling.                                          #
 #                                                                                                                      #
-#                                                                                                                      #
 # #################################################################################################################### #
 
 
@@ -38,15 +37,11 @@ class IcmpHelperLibrary:
     # References:                                                                                                      #
     # https://www.iana.org/assignments/icmp-parameters/icmp-parameters.xhtml                                           #
     #                                                                                                                  #
-    #                                                                                                                  #
     # ################################################################################################################ #
     
     class IcmpPacket:
         # ############################################################################################################ #
         # IcmpPacket Class Scope Variables                                                                             #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         #                                                                                                              #
         # ############################################################################################################ #
         __icmpTarget = ""               # Remote Host
@@ -66,9 +61,6 @@ class IcmpHelperLibrary:
 
         # ############################################################################################################ #
         # IcmpPacket Class Getters                                                                                     #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         #                                                                                                              #
         # ############################################################################################################ #
 
@@ -99,9 +91,6 @@ class IcmpHelperLibrary:
         # ############################################################################################################ #
         # IcmpPacket Class Setters                                                                                     #
         #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         # ############################################################################################################ #
         def setIcmpTarget(self, icmpTarget):
             self.__icmpTarget = icmpTarget
@@ -130,9 +119,6 @@ class IcmpHelperLibrary:
 
         # ############################################################################################################ #
         # IcmpPacket Class Private Functions                                                                           #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         #                                                                                                              #
         # ############################################################################################################ #
         def __recalculateChecksum(self):
@@ -207,24 +193,23 @@ class IcmpHelperLibrary:
         """
 
         def __validateIcmpReplyPacketWithOriginalPingData(self, icmpReplyPacket):
-            # Hint: Work through comparing each value and identify if this is a valid response.
 
             # Check that the sequence number, packet identifier and raw data are valid
             #   check getDataRaw() against getIcmpData, etc.
             # Hint: Work through comparing each value and identify if this is a valid response.
 
             # process data for echo response only
-            if icmpReplyPacket.getIcmpType() == 0:
-                validData = self.getDataRaw() == icmpReplyPacket.getIcmpData()
+            if icmpReplyPacket.getReplyIcmpType() == 0:
+                validData = self.getDataRaw() == icmpReplyPacket.getReplyIcmpData()
             else:
                 validData = True
 
             icmpReplyPacket.setIcmpData_isValid(validData)
 
-            validSequence = self.getPacketSequenceNumber() == icmpReplyPacket.getIcmpSequenceNumber()
+            validSequence = self.getPacketSequenceNumber() == icmpReplyPacket.getReplyIcmpSequenceNumber()
             icmpReplyPacket.setIcmpSequenceNumber_isValid(validSequence)
 
-            validIdentifier = self.getPacketIdentifier() == icmpReplyPacket.getIcmpIdentifier()
+            validIdentifier = self.getPacketIdentifier() == icmpReplyPacket.getReplyIcmpIdentifier()
             icmpReplyPacket.setIcmpIdentifier_isValid(validIdentifier)
 
             packetValidationBool = (icmpReplyPacket.getIcmpData_isValid()
@@ -238,9 +223,6 @@ class IcmpHelperLibrary:
 
         # ############################################################################################################ #
         # IcmpPacket Class Public Functions                                                                            #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         #                                                                                                              #
         # ############################################################################################################ #
         def buildPacket_echoRequest(self, packetIdentifier, packetSequenceNumber):
@@ -258,7 +240,10 @@ class IcmpHelperLibrary:
             mySocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
             mySocket.settimeout(self.__ipTimeout)
             mySocket.bind(("", 0))
+            actualIdentifier = mySocket.getsockname()[1]    # kernal-assigned port = actual ICMP identifier
+            self.setPacketIdentifier(actualIdentifier)
             mySocket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', self.getTtl()))  # Unsigned int - 4 bytes
+
             try:
                 mySocket.sendto(b''.join([self.__header, self.__data]), (self.__destinationIpAddress, 0))
                 timeSent = time.time()
@@ -277,10 +262,10 @@ class IcmpHelperLibrary:
                 while True:
                     recvPacket, addr = mySocket.recvfrom(1024)  # recvPacket - bytes object representing data received
                     timeReceived = time.time()
-                    icmpType, icmpCode = recvPacket[20:22]
+                    icmpType, icmpCode = recvPacket[0:2]
 
                     if icmpType == 0:
-                        recvIdentifier = struct.unpack("!H", recvPacket[24:26])[0]
+                        recvIdentifier = struct.unpack("!H", recvPacket[4:6])[0]
                     else:
                         ihl = (recvPacket[28] & 0x0F) * 4
                         recvIdentifier = struct.unpack("!H", recvPacket[28 + ihl + 4:28 + ihl + 6])[0]
@@ -336,22 +321,10 @@ class IcmpHelperLibrary:
     # References:                                                                                                      #
     # http://www.networksorcery.com/enp/protocol/icmp/msg0.htm                                                         #
     #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
     # ################################################################################################################ #
     class IcmpPacket_EchoReply:
         # ############################################################################################################ #
         # IcmpPacket_EchoReply Class Scope Variables                                                                   #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         #                                                                                                              #
         # ############################################################################################################ #
         __recvPacket = b''
@@ -363,7 +336,7 @@ class IcmpHelperLibrary:
         __icmpIdentifier_isValid = False
 
         """
-        Code citation: Trace data which populates these messages copied from:
+        Code citation: Trace data which populates these messages adapted from:
         Internet Control Message Protocol (ICMP) Parameters
         https://www.iana.org/assignments/icmp-parameters/icmp-parameters.xhtml#icmp-parameters-codes-3
         """
@@ -394,72 +367,42 @@ class IcmpHelperLibrary:
         # ############################################################################################################ #
         # IcmpPacket_EchoReply Constructors                                                                            #
         #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         # ############################################################################################################ #
-        def __init__(self, recvPacket, originalPacket):
+        def __init__(self, recvPacket, originalPacket, headerOffset=0):
             self.__recvPacket = recvPacket
             self.__originalPacket = originalPacket
+            self.__headerOffset = headerOffset
 
         # ############################################################################################################ #
         # IcmpPacket_EchoReply Getters                                                                                 #
         #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         # ############################################################################################################ #
-        def getIcmpType(self):
-            # Method 1
-            # bytes = struct.calcsize("B")        # Format code B is 1 byte
-            # return struct.unpack("!B", self.__recvPacket[20:20 + bytes])[0]
+        def getReplyIcmpType(self):
+            return self.__unpackByFormatAndPosition("B", 0)
 
-            # Method 2
-            return self.__unpackByFormatAndPosition("B", 20)
+        def getReplyIcmpCode(self):
+            return self.__unpackByFormatAndPosition("B", 1)
 
-        def getIcmpCode(self):
-            # Method 1
-            # bytes = struct.calcsize("B")        # Format code B is 1 byte
-            # return struct.unpack("!B", self.__recvPacket[21:21 + bytes])[0]
+        def getReplyIcmpHeaderChecksum(self):
+            return self.__unpackByFormatAndPosition("H", 2)
 
-            # Method 2
-            return self.__unpackByFormatAndPosition("B", 21)
+        def getReplyIcmpIdentifier(self):
+            return self.__unpackByFormatAndPosition("H", 4)
 
-        def getIcmpHeaderChecksum(self):
-            # Method 1
-            # bytes = struct.calcsize("H")        # Format code H is 2 bytes
-            # return struct.unpack("!H", self.__recvPacket[22:22 + bytes])[0]
+        def getReplyIcmpSequenceNumber(self):
+            return self.__unpackByFormatAndPosition("H", 6)
 
-            # Method 2
-            return self.__unpackByFormatAndPosition("H", 22)
-
-        def getIcmpIdentifier(self):
-            # Method 1
-            # bytes = struct.calcsize("H")        # Format code H is 2 bytes
-            # return struct.unpack("!H", self.__recvPacket[24:24 + bytes])[0]
-
-            # Method 2
-            return self.__unpackByFormatAndPosition("H", 24)
-
-        def getIcmpSequenceNumber(self):
-            # Method 1
-            # bytes = struct.calcsize("H")        # Format code H is 2 bytes
-            # return struct.unpack("!H", self.__recvPacket[26:26 + bytes])[0]
-
-            # Method 2
-            return self.__unpackByFormatAndPosition("H", 26)
-
-        def getDateTimeSent(self):
+        def getReplyDateTimeSent(self):
             # This accounts for bytes 28 through 35 = 64 bits
-            return self.__unpackByFormatAndPosition("d", 28)   # Used to track overall round trip time
+            return self.__unpackByFormatAndPosition("d", 8)   # Used to track overall round trip time
                                                                # time.time() creates a 64 bit value of 8 bytes
 
-        def getIcmpData(self):
+        def getReplyIcmpData(self):
             # This accounts for bytes 36 to the end of the packet.
-            return self.__recvPacket[36:].decode('utf-8')
+            return self.__recvPacket[16:].decode('utf-8')
 
         # _isValid getters
-        # create getter and setter for icmpIdentifier_isValid and seq number, data
+        # getters and setters for icmpIdentifier_isValid and seq number, data
         def getIcmpData_isValid(self):
             return self.__icmpData_isValid
 
@@ -485,18 +428,12 @@ class IcmpHelperLibrary:
         # ############################################################################################################ #
         # IcmpPacket_EchoReply Setters                                                                                 #
         #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         # ############################################################################################################ #
         def setIsValidResponse(self, booleanValue):
             self.__isValidResponse = booleanValue
 
         # ############################################################################################################ #
         # IcmpPacket_EchoReply Private Functions                                                                       #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         #                                                                                                              #
         # ############################################################################################################ #
         def __unpackByFormatAndPosition(self, formatCode, basePosition):
@@ -506,30 +443,22 @@ class IcmpHelperLibrary:
         # ############################################################################################################ #
         # IcmpPacket_EchoReply Public Functions                                                                        #
         #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
-        #                                                                                                              #
         # ############################################################################################################ #
-
-        """
-        Code citation: For the output format, I gained important insights from running the ping command in Linux.
-        For guidance, I referred to the Linux man page for ping(8) at https://linux.die.net/man/8/ping.
-        """
 
         def printResultToConsole(self, ttl, rtt, icmpType, icmpCode, addr):
 
             # Check and report errors only for echo response
-            if self.getIcmpType() == 0:
+            if self.getReplyIcmpType() == 0:
                 if not self.isValidResponse():
                     if not self.getIcmpData_isValid():
                         print("Expected raw data value %s, actual value %s" %
-                              (self.__originalPacket.getDataRaw(), self.getIcmpData()))
+                              (self.__originalPacket.getDataRaw(), self.getReplyIcmpData()))
                     if not self.getIcmpSequenceNumber_isValid():
                         print("Expected sequence number data %d, actual value %d" %
-                              (self.__originalPacket.getPacketSequenceNumber(), self.getIcmpSequenceNumber()))
+                              (self.__originalPacket.getPacketSequenceNumber(), self.getReplyIcmpSequenceNumber()))
                     if not self.getIcmpIdentifier_isValid():
                         (print("Expected identifier value %d, actual value %d" %
-                         (self.__originalPacket.getPacketIdentifier(), self.getIcmpIdentifier())))
+                               (self.__originalPacket.getPacketIdentifier(), self.getReplyIcmpIdentifier())))
                         return 0
             else:
                 self.setIcmpData_isValid(True)
@@ -545,25 +474,16 @@ class IcmpHelperLibrary:
     # ################################################################################################################ #
     # Class IcmpHelperLibrary                                                                                          #
     #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
     # ################################################################################################################ #
 
     # ################################################################################################################ #
     # IcmpHelperLibrary Class Scope Variables                                                                          #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
     #                                                                                                                  #
     # ################################################################################################################ #
     __DEBUG_IcmpHelperLibrary = False                  # Allows for debug output
 
     # ################################################################################################################ #
     # IcmpHelperLibrary Private Functions                                                                              #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
     #                                                                                                                  #
     # ################################################################################################################ #
     def __sendIcmpEchoRequest(self, host):
@@ -575,7 +495,6 @@ class IcmpHelperLibrary:
 
         # Message to start ping
         print("Pinging %s" % host)
-
 
         for i in range(pingCount):
             # Build packet
@@ -612,7 +531,6 @@ class IcmpHelperLibrary:
         rttMin = min(rttBuffer)
         rttMax = max(rttBuffer)
         rttMean = statistics.mean(rttBuffer)
-
 
         # Print transmission results
         print("%d packets transmitted, %d received, %s lost, %.0f%% packet loss, time %.0f ms" %
@@ -665,12 +583,8 @@ class IcmpHelperLibrary:
             i += 1
 
 
-
     # ################################################################################################################ #
     # IcmpHelperLibrary Public Functions                                                                               #
-    #                                                                                                                  #
-    #                                                                                                                  #
-    #                                                                                                                  #
     #                                                                                                                  #
     # ################################################################################################################ #
     def sendPing(self, targetHost):
@@ -685,9 +599,6 @@ class IcmpHelperLibrary:
 # #################################################################################################################### #
 # main()                                                                                                               #
 #                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
-#                                                                                                                      #
 # #################################################################################################################### #
 def main():
     icmpHelperPing = IcmpHelperLibrary()
@@ -699,8 +610,9 @@ def main():
     # icmpHelperPing.sendPing("gaia.cs.umass.edu")
     # icmpHelperPing.traceRoute("164.151.129.20")
     # icmpHelperPing.traceRoute("122.56.99.243")
-    # icmpHelperPing.traceRoute("google.com")
-    icmpHelperPing.traceRoute("8.8.8.8")
+    icmpHelperPing.traceRoute("google.com")
+    # icmpHelperPing.traceRoute("8.8.8.8")
+    #icmpHelperPing.sendPing("8.8.8.8")
 
     # unreachable maybe
     # icmpHelperPing.traceRoute("210.152.243.234")                    # Samina
