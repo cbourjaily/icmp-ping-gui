@@ -255,7 +255,7 @@ class IcmpHelperLibrary:
             if len(self.__icmpTarget.strip()) <= 0 | len(self.__destinationIpAddress.strip()) <= 0:
                 self.setIcmpTarget("127.0.0.1")
 
-            mySocket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)
+            mySocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
             mySocket.settimeout(self.__ipTimeout)
             mySocket.bind(("", 0))
             mySocket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', self.getTtl()))  # Unsigned int - 4 bytes
