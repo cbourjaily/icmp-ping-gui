@@ -277,6 +277,10 @@ class IcmpHelperLibrary:
                             recvPacket[headerOffset + 8 + ihl + 4:headerOffset + 8 + ihl + 6]
                         )[0]
 
+                    # Discard packets that are not responses to sent echo requests
+                    if recvIdentifier != self.getPacketIdentifier():
+                        continue
+
                     rtt = (timeReceived - timeSent) * 1000
 
                     # Adjust offset for ICMP type
@@ -308,7 +312,7 @@ class IcmpHelperLibrary:
                 pass
             except PermissionError:
                 print("Permission denied: traceroute requires elevated privileges (run with sudo).")
-                return None
+                return "PERMISSION_DENIED"
 
             finally:
                 mySocket.close()
@@ -496,7 +500,7 @@ class IcmpHelperLibrary:
     # IcmpHelperLibrary Private Functions                                                                              #
     #                                                                                                                  #
     # ################################################################################################################ #
-    def __sendIcmpEchoRequest(self, host):
+    def __sendIcmpEchoRequest(self, host, pingCount=4):
         print("sendIcmpEchoRequest Started...") if self.__DEBUG_IcmpHelperLibrary else 0
 
         # Save rtt responses in order to calculate statistics
@@ -524,10 +528,9 @@ class IcmpHelperLibrary:
 
             icmpPacket.printIcmpPacketHeader_hex() if self.__DEBUG_IcmpHelperLibrary else 0
             icmpPacket.printIcmpPacket_hex() if self.__DEBUG_IcmpHelperLibrary else 0
-            # we should be confirming values are correct, such as identifier and sequence number and data
 
         # calculate the packet loss rate (in percentage).
-        time = sum(rttBuffer)
+        totalRtt = sum(rttBuffer)
         successfulPings = len(rttBuffer)
         droppedPings = pingCount - successfulPings
 
@@ -536,17 +539,19 @@ class IcmpHelperLibrary:
         else:
             percentageLoss = 100 * (droppedPings / pingCount)
 
-        # Determine rtt minimum, maximum, and average
-        rttMin = min(rttBuffer)
-        rttMax = max(rttBuffer)
-        rttMean = statistics.mean(rttBuffer)
-
         # Print transmission results
         print("%d packets transmitted, %d received, %s lost, %.0f%% packet loss, time %.0f ms" %
-              (pingCount, successfulPings, droppedPings, percentageLoss, time))
+              (pingCount, successfulPings, droppedPings, percentageLoss, totalRtt))
 
-        # Print rtt min/max/ave stats
-        print("rtt min/avg/max = %.0f/%.0f/%.0f ms" % (rttMin, rttMean, rttMax))
+        # Determine rtt minimum, maximum, and average - only if we got at least one reply
+        if successfulPings > 0:
+            rttMin = min(rttBuffer)
+            rttMax = max(rttBuffer)
+            rttMean = statistics.mean(rttBuffer)
+            print("rtt min/avg/max = %.0f/%.0f/%.0f ms" % (rttMin, rttMean, rttMax))
+        else:
+            print("rtt min/avg/max = N/A (no responses received)")
+
 
     """ 
     Code citation: When composing __sendIcmpTraceRoute(), I referred to the implementation 
@@ -580,6 +585,11 @@ class IcmpHelperLibrary:
 
             # Get icmpType as return value in order to detect end
             icmpType = icmpPacket.sendEchoRequest(isTraceroute=True)                     # Build IP
+
+            # Stop immediately if lacking permission to open a raw socket
+            if icmpType == "PERMISSION_DENIED":
+                print("Traceroute aborted: elevated privileges required.")
+                break
 
             # toggle isEnd if the icmpType is 3 or 0 (type zero returns RTT in sendEchoRequst() which is a float)
             if icmpType == 3 or icmpType == 0 or isinstance(icmpType, float):
@@ -615,12 +625,12 @@ def main():
 
     # Choose one of the following by uncommenting out the line
     # icmpHelperPing.sendPing("209.233.126.254")
-    icmpHelperPing.sendPing("www.google.com")
+    # icmpHelperPing.sendPing("www.google.com")
     # icmpHelperPing.sendPing("gaia.cs.umass.edu")
     # icmpHelperPing.traceRoute("164.151.129.20")
     # icmpHelperPing.traceRoute("122.56.99.243")
     # icmpHelperPing.traceRoute("google.com")
-    # icmpHelperPing.traceRoute("8.8.8.8")
+    icmpHelperPing.traceRoute("8.8.8.8")
     # icmpHelperPing.sendPing("8.8.8.8")
 
     # unreachable maybe
