@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables
+.env
+
+# Python tooling
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.log
+
+# Packaging
+*.egg-info/
+dist/
+
+# Flet
+.flet/
+build/
+storage/
+
+# IDEs
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
