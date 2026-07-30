@@ -1,4 +1,5 @@
 from dataclasses import field
+import asyncio
 from IcmpHelperLibrary import IcmpHelperLibrary
 
 import flet as ft
@@ -30,12 +31,17 @@ class Ping(ft.Container):
             ],
         )
 
-    def ping_clicked(self, e):
+    async def ping_clicked(self, e):
+        self.ping_button.disabled = True
         self.output.controls.clear()
+        self.output.controls.append(ft.Text("Pinging..."))
+        self.update()
+
         curr_address = self.address.value
 
-        summary = self.icmp_helper.sendPing(curr_address)
+        summary = await asyncio.to_thread(self.icmp_helper.sendPing, curr_address)
 
+        self.output.controls.clear
         for reply in summary.replies:
             if reply.success:
                 text = f"seq={reply.sequence_number} ttl={reply.ttl} rtt={reply.rtt_ms:.0f}ms {reply.address}"
@@ -55,6 +61,7 @@ class Ping(ft.Container):
                 f"rtt min/avg/max = {summary.rtt_min:.0f}/{summary.rtt_avg:.0f}/{summary.rtt_max:.0f} ms"
             ))
 
+        self.ping_button.disabled = False
         self.update()
 
 
