@@ -4,37 +4,57 @@ from IcmpHelperLibrary import IcmpHelperLibrary
 import flet as ft
 
 @ft.control
-class Ping(ft.Column):
+class Ping(ft.Container):
+
     def init(self):
-        self.input = ft.TextField(expand=True)
-        self.button = ft.FloatingActionButton(
+        self.icmp_helper = IcmpHelperLibrary()
+        self.address = ft.TextField(expand=True)
+        self.output = ft.ListView(
+            expand=True,
+            spacing=2,
+            auto_scroll=True,
+            width=600,
+        )
+        self.ping_button = ft.FloatingActionButton(
             content="Ping",
             on_click=self.ping_clicked
         )
         self.width = 400
-        self.controls = [
-            ft.Row(
-                alignment=ft.MainAxisAlignment.CENTER,
-                controls=[
-                    ft.Text("Ping", size=30),
-                ],
-            ),
-            ft.Row(
-                alignment=ft.MainAxisAlignment.CENTER,
-                controls=[
-                    ft.Text("Enter a URL or IP address to ping", size=15),
-                ],
-            ),
-            ft.Row(
-                controls=[
-                    self.input,
-                    self.button,
-                ],
-            ),
-        ]
+        self.content = ft.Column(
+            controls = [
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[
+                        ft.Text("Ping", size=30),
+                    ],
+                ),
+                ft.Row(
+                    alignment=ft.MainAxisAlignment.CENTER,
+                    controls=[
+                        ft.Text("Enter a URL or IP address to ping", size=15),
+                    ],
+                ),
+                ft.Row(
+                    controls=[
+                        self.address,
+                        self.ping_button,
+                    ],
+                ),
+                ft.Row(
+                    controls=[
+                        self.output,
+                    ]
+                )
+            ],
+        )
 
     def ping_clicked(self, e):
-        pass
+        buffer = io.StringIO()
+        curr_address = self.address.value
+        with redirect_stdout(buffer):
+            self.icmp_helper.sendPing(curr_address)
+        self.output.value = buffer.getvalue()
+        self.update
 
 
 def main(page: ft.Page):

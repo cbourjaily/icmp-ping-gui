@@ -20,6 +20,59 @@ import time
 import select
 import statistics               # For mean
 
+# GUI integration
+from dataclasses import dataclass, field
+from typing import Optional, List
+
+
+# #################################################################################################################### #
+# Class PingReply                                                                                                      #
+#                                                                                                                      #
+# Description:                                                                                                         #
+# Represents the result of a single ICMP echo request. Stores timing, protocol,                                        #
+# and validation information so that user interfaces can present the results                                           #
+# without relying on console output.                                                                                   #
+#                                                                                                                      #
+########################################################################################################################
+
+@dataclass
+class PingReply:
+    """One echo reply (or timeout/error) for a single ping."""
+    sequence_number: int
+    success: bool                           # True if a valid reply was received
+    rtt_ms: Optional[float] = None          # None if timed out
+    ttl: Optional[int] = None
+    icmp_type: Optional[int] = None
+    icmp_code: Optional[str] = None
+    is_valid: bool = True                   # sequence/id/data all matched
+    error_message: Optional[str] = None
+
+# #################################################################################################################### #
+# Class PingSummary                                                                                                    #
+#                                                                                                                      #
+# Description:                                                                                                         #
+# Represents the complete results of a ping operation, including overall                                               #
+# transmission statistics and the collection of individual echo request                                                #
+# results. Designed for consumption by graphical user interfaces or other                                              #
+# clients requiring structured ping data.                                                                              #
+#                                                                                                                      #
+# #################################################################################################################### #
+
+@dataclass
+class PingSummary:
+    """Full result of a sendPing() call, ready for GUI to consume."""
+    host: str
+    target_ip: Optional[str] = None
+    packets_transmitted: int = 0
+    packets_received: int = 0
+    packets_lost: int = 0
+    percent_loss: float = 0.0
+    rtt_min: Optional[float] = None
+    rtt_avg: Optional[float] = None
+    rtt_max: Optional[float] = None
+    replies: List[PingReply] = field(default_factory=list)
+    error: Optional[str] = None
+
 
 # #################################################################################################################### #
 # Class IcmpHelperLibrary                                                                                              #
@@ -31,6 +84,7 @@ import statistics               # For mean
 ########################################################################################################################
 
 class IcmpHelperLibrary:
+
     # ################################################################################################################ #
     # Class IcmpPacket                                                                                                 #
     #                                                                                                                  #
@@ -40,10 +94,7 @@ class IcmpHelperLibrary:
     # ################################################################################################################ #
     
     class IcmpPacket:
-        # ############################################################################################################ #
-        # IcmpPacket Class Scope Variables                                                                             #
-        #                                                                                                              #
-        # ############################################################################################################ #
+        # IcmpPacket Class Scope Variables
         __icmpTarget = ""               # Remote Host
         __destinationIpAddress = ""     # Remote Host IP Address
         __header = b''                  # Header after byte packing
@@ -237,22 +288,24 @@ class IcmpHelperLibrary:
             if len(self.__icmpTarget.strip()) <= 0 | len(self.__destinationIpAddress.strip()) <= 0:
                 self.setIcmpTarget("127.0.0.1")
 
-            if isTraceroute:
-                mySocket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)
-                headerOffset = 20
-            else:
-                mySocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
-                headerOffset = 0
-
-            mySocket.settimeout(self.__ipTimeout)
-            mySocket.bind(("", 0))
-            mySocket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', self.getTtl()))  # Unsigned int - 4 bytes
-
-            if not isTraceroute:
-                actualIdentifier = mySocket.getsockname()[1]    # kernal-assigned port = actual ICMP identifier
-                self.setPacketIdentifier(actualIdentifier)
+            mySocket = None
 
             try:
+                if isTraceroute:
+                    mySocket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)
+                    headerOffset = 20
+                else:
+                    mySocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
+                    headerOffset = 0
+
+                mySocket.settimeout(self.__ipTimeout)
+                mySocket.bind(("", 0))
+                mySocket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', self.getTtl()))  # Unsigned int - 4 bytes
+
+                if not isTraceroute:
+                    actualIdentifier = mySocket.getsockname()[1]    # kernal-assigned port = actual ICMP identifier
+                    self.setPacketIdentifier(actualIdentifier)
+
                 mySocket.sendto(b''.join([self.__header, self.__data]), (self.__destinationIpAddress, 0))
                 timeSent = time.time()
 
@@ -315,7 +368,8 @@ class IcmpHelperLibrary:
                 return "PERMISSION_DENIED"
 
             finally:
-                mySocket.close()
+                if mySocket is not None:
+                    mySocket.close()
 
         def printIcmpPacketHeader_hex(self):
             print("Header Size: ", len(self.__header))
@@ -630,8 +684,8 @@ def main():
     # icmpHelperPing.traceRoute("164.151.129.20")
     # icmpHelperPing.traceRoute("122.56.99.243")
     # icmpHelperPing.traceRoute("google.com")
-    icmpHelperPing.traceRoute("8.8.8.8")
-    # icmpHelperPing.sendPing("8.8.8.8")
+    # icmpHelperPing.traceRoute("8.8.8.8")
+    icmpHelperPing.sendPing("8.8.8.8")
 
     # unreachable maybe
     # icmpHelperPing.traceRoute("210.152.243.234")                    # Samina
