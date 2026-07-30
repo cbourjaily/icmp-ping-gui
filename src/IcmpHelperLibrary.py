@@ -44,6 +44,7 @@ class PingReply:
     ttl: Optional[int] = None
     icmp_type: Optional[int] = None
     icmp_code: Optional[str] = None
+    address: Optional[str] = None
     is_valid: bool = True                   # sequence/id/data all matched
     error_message: Optional[str] = None
 
@@ -341,31 +342,29 @@ class IcmpHelperLibrary:
                         icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self,
                                                                                  headerOffset=headerOffset)
                         self.__validateIcmpReplyPacketWithOriginalPingData(icmpReplyPacket)
-                        icmpReplyPacket.printResultToConsole(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
-                        return icmpType
+                        return icmpReplyPacket.toPingReply(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
 
                     elif icmpType == 0:                     # Echo reply
                         icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self,
                                                                                  headerOffset=headerOffset)
                         self.__validateIcmpReplyPacketWithOriginalPingData(icmpReplyPacket)
-                        icmpReplyPacket.printResultToConsole(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
-                        return rtt
+                        return icmpReplyPacket.toPingReply(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
 
                     elif icmpType == 3:                     # Destination unreachable
                         icmpReplyPacket = IcmpHelperLibrary.IcmpPacket_EchoReply(recvPacket, originalPacket=self,
                                                                                  headerOffset=headerOffset)
                         self.__validateIcmpReplyPacketWithOriginalPingData(icmpReplyPacket)
-                        icmpReplyPacket.printResultToConsole(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
-                        return icmpType
+                        return icmpReplyPacket.toPingReply(self.getTtl(), rtt, icmpType, icmpCode, addr[0])
 
                     else:
                         print("error")
 
             except timeout:
-                pass
+                return PingReply(sequence_number=self.getPacketSequenceNumber(), success=False,
+                                 error_message="Request timed out")
             except PermissionError:
-                print("Permission denied: traceroute requires elevated privileges (run with sudo).")
-                return "PERMISSION_DENIED"
+                return PingReply(sequence_number=self.getPacketSequenceNumber(), success=False,
+                                 error_message="Permission denied (raw sockets require sudo)")
 
             finally:
                 if mySocket is not None:
@@ -513,30 +512,43 @@ class IcmpHelperLibrary:
         #                                                                                                              #
         # ############################################################################################################ #
 
-        def printResultToConsole(self, ttl, rtt, icmpType, icmpCode, addr):
-
+        def toPingReply(self, ttl, rtt, icmpType, icmpCode, addr):
             # Check and report errors only for echo response
-            if self.getReplyIcmpType() == 0:
-                if not self.isValidResponse():
-                    if not self.getIcmpData_isValid():
-                        print("Expected raw data value %s, actual value %s" %
-                              (self.__originalPacket.getDataRaw(), self.getReplyIcmpData()))
-                    if not self.getIcmpSequenceNumber_isValid():
-                        print("Expected sequence number data %d, actual value %d" %
-                              (self.__originalPacket.getPacketSequenceNumber(), self.getReplyIcmpSequenceNumber()))
-                    if not self.getIcmpIdentifier_isValid():
-                        (print("Expected identifier value %d, actual value %d" %
-                               (self.__originalPacket.getPacketIdentifier(), self.getReplyIcmpIdentifier())))
-                        return 0
-            else:
-                self.setIcmpData_isValid(True)
-                self.setIcmpSequenceNumber_isValid(True)
-                self.setIcmpIdentifier_isValid(True)
-                self.setIsValidResponse(True)
+            if self.getReplyIcmpType() == 0 and not self.isValidResponse():
+                error_parts = []
+                if not self.getIcmpData_isValid():
+                    error_parts.append(
+                        f"data mismatch (expected {self.__originalPacket.getDataRaw()!r}, "
+                        f"got {self.getReplyIcmpData()!r})"
+                    )
+                if not self.getIcmpSequenceNumber_isValid():
+                    error_parts.append(
+                        f"sequencemismatch (expected {self.__originalPacket.getPacketSequenceNumber()},"
+                        f"got {self.getReplyIcmpSequenceNumber()})"
+                    )
+                if not self.getIcmpIdentifier_isValid():
+                    error_parts.append(
+                        f"identifier mismatch (expected {self.__orignialPacket.getPacketIdentifier()}, "
+                        f"got {self.getReplyIcmpIdentifier()})"
+                    )
+                return PingReply(
+                    sequence_number=self.__originalPacket.getPacketSequenceNumber(),
+                    success=False,
+                    is_valid=False,
+                    error_message="; ".join(error_parts),
+                )
 
             code = self.__typeAndCodeMap[icmpType][icmpCode]
-            print("TTL=%d     RTT=%.0f ms     Type=%d    Code=%s   %s" %
-                  (ttl, rtt, icmpType, code, addr))
+            return PingReply(
+                sequence_number=self.__originalPacket.getPacketSequenceNumber(),
+                success=(icmpType == 0),
+                rtt_ms=rtt,
+                ttl=ttl,
+                icmp_type=icmpType,
+                icmp_code=code,
+                address=addr,
+                is_valid=True
+            )
 
 
     # ################################################################################################################ #
@@ -555,57 +567,35 @@ class IcmpHelperLibrary:
     #                                                                                                                  #
     # ################################################################################################################ #
     def __sendIcmpEchoRequest(self, host, pingCount=4):
-        print("sendIcmpEchoRequest Started...") if self.__DEBUG_IcmpHelperLibrary else 0
-
-        # Save rtt responses in order to calculate statistics
+        summary = PingSummary(host=host)
         rttBuffer = []
-
-        # Message to start ping
-        print("Pinging %s" % host)
 
         for i in range(pingCount):
             # Build packet
             icmpPacket = IcmpHelperLibrary.IcmpPacket()
-
-            randomIdentifier = (os.getpid() & 0xffff)      # Get as 16 bit number - Limit based on ICMP header standards
-                                                           # Some PIDs are larger than 16 bit
-            packetIdentifier = randomIdentifier
-            packetSequenceNumber = i
-
-            icmpPacket.buildPacket_echoRequest(packetIdentifier, packetSequenceNumber)  # Build ICMP for IP payload
+            packetIdentifier = os.getpid() & 0xffff
+            icmpPacket.buildPacket_echoRequest(packetIdentifier, i)           # Build ICMP for IP payload
             icmpPacket.setIcmpTarget(host)
 
-            rtt = icmpPacket.sendEchoRequest()                                                # Build IP
-            # rtt is the rtt value for the current packet or 0
-            if rtt:
-                rttBuffer.append(rtt)
+            # Method call returns a PingReply object
+            reply = icmpPacket.sendEchoRequest()                                 # Build IP
+            summary.replies.append(reply)
 
-            icmpPacket.printIcmpPacketHeader_hex() if self.__DEBUG_IcmpHelperLibrary else 0
-            icmpPacket.printIcmpPacket_hex() if self.__DEBUG_IcmpHelperLibrary else 0
+            if reply.success and reply.rtt_ms is not None:
+                rttBuffer.append(reply.rtt_ms)
 
-        # calculate the packet loss rate (in percentage).
-        totalRtt = sum(rttBuffer)
-        successfulPings = len(rttBuffer)
-        droppedPings = pingCount - successfulPings
+        summary.packets_transmitted = pingCount
+        summary.packets_received = len(rttBuffer)
+        summary.packets_lost = pingCount - len(rttBuffer)
+        summary.percent_loss = (
+            100 if not rttBuffer else 100 * (1 - len(rttBuffer) / pingCount)
+        )
+        if rttBuffer:
+            summary.rtt_min = min(rttBuffer)
+            summary.rtt_avg = statistics.mean(rttBuffer)
+            summary.rtt_max = max(rttBuffer)
 
-        if successfulPings == 0:
-            percentageLoss = 100.0
-        else:
-            percentageLoss = 100 * (droppedPings / pingCount)
-
-        # Print transmission results
-        print("%d packets transmitted, %d received, %s lost, %.0f%% packet loss, time %.0f ms" %
-              (pingCount, successfulPings, droppedPings, percentageLoss, totalRtt))
-
-        # Determine rtt minimum, maximum, and average - only if we got at least one reply
-        if successfulPings > 0:
-            rttMin = min(rttBuffer)
-            rttMax = max(rttBuffer)
-            rttMean = statistics.mean(rttBuffer)
-            print("rtt min/avg/max = %.0f/%.0f/%.0f ms" % (rttMin, rttMean, rttMax))
-        else:
-            print("rtt min/avg/max = N/A (no responses received)")
-
+        return summary
 
     """ 
     Code citation: When composing __sendIcmpTraceRoute(), I referred to the implementation 
@@ -645,7 +635,7 @@ class IcmpHelperLibrary:
                 print("Traceroute aborted: elevated privileges required.")
                 break
 
-            # toggle isEnd if the icmpType is 3 or 0 (type zero returns RTT in sendEchoRequst() which is a float)
+            # toggle isEnd if the icmpType is 3 or 0 (type zero returns RTT in sendEchoRequest() which is a float)
             if icmpType == 3 or icmpType == 0 or isinstance(icmpType, float):
                 isEnd = True
 
@@ -660,9 +650,8 @@ class IcmpHelperLibrary:
     # IcmpHelperLibrary Public Functions                                                                               #
     #                                                                                                                  #
     # ################################################################################################################ #
-    def sendPing(self, targetHost, pingCount=4):
-        print("ping Started...") if self.__DEBUG_IcmpHelperLibrary else 0
-        self.__sendIcmpEchoRequest(targetHost, pingCount)
+    def sendPing(self, targetHost, pingCount=100):
+        return self.__sendIcmpEchoRequest(targetHost, pingCount)
 
     def traceRoute(self, targetHost):
         print("traceRoute Started...") if self.__DEBUG_IcmpHelperLibrary else 0
