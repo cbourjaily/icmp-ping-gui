@@ -566,29 +566,31 @@ class IcmpHelperLibrary:
     # IcmpHelperLibrary Private Functions                                                                              #
     #                                                                                                                  #
     # ################################################################################################################ #
-    def __sendIcmpEchoRequest(self, host, pingCount=4):
+    def __sendIcmpEchoRequest(self, host, pingCount=4, stop_event=None):
         summary = PingSummary(host=host)
         rttBuffer = []
 
         for i in range(pingCount):
-            # Build packet
+            if stop_event is not None and stop_event.is_set():
+                break
+
             icmpPacket = IcmpHelperLibrary.IcmpPacket()
             packetIdentifier = os.getpid() & 0xffff
-            icmpPacket.buildPacket_echoRequest(packetIdentifier, i)           # Build ICMP for IP payload
+            icmpPacket.buildPacket_echoRequest(packetIdentifier, i)
             icmpPacket.setIcmpTarget(host)
 
-            # Method call returns a PingReply object
-            reply = icmpPacket.sendEchoRequest()                                 # Build IP
+            reply = icmpPacket.sendEchoRequest()
             summary.replies.append(reply)
 
             if reply.success and reply.rtt_ms is not None:
                 rttBuffer.append(reply.rtt_ms)
 
-        summary.packets_transmitted = pingCount
+        summary.packets_transmitted = len(summary.replies)
         summary.packets_received = len(rttBuffer)
-        summary.packets_lost = pingCount - len(rttBuffer)
+        summary.packets_lost = summary.packets_transmitted - len(rttBuffer)
         summary.percent_loss = (
-            100 if not rttBuffer else 100 * (1 - len(rttBuffer) / pingCount)
+            100.0 if summary.packets_transmitted == 0
+            else 100.0 * summary.packets_lost / summary.packets_transmitted
         )
         if rttBuffer:
             summary.rtt_min = min(rttBuffer)
@@ -650,12 +652,41 @@ class IcmpHelperLibrary:
     # IcmpHelperLibrary Public Functions                                                                               #
     #                                                                                                                  #
     # ################################################################################################################ #
-    def sendPing(self, targetHost, pingCount=100):
-        return self.__sendIcmpEchoRequest(targetHost, pingCount)
+    def sendPing(self, targetHost, pingCount=4, stop_event=None):
+        return self.__sendIcmpEchoRequest(targetHost, pingCount, stop_event)
 
-    def traceRoute(self, targetHost):
+    def traceRoute(self, targetHost:str):
         print("traceRoute Started...") if self.__DEBUG_IcmpHelperLibrary else 0
         self.__sendIcmpTraceRoute(targetHost)
+
+    def sendSinglePing(self, host, sequenceNumber):
+        """Sends one echo request and returns a single PingReply."""
+        icmpPacket = IcmpHelperLibrary.IcmpPacket()
+        packetIdentifier = os.getpid() & 0xffff
+        icmpPacket.buildPacket_echoRequest(packetIdentifier, sequenceNumber)
+        icmpPacket.setIcmpTarget(host)
+        return icmpPacket.sendEchoRequest()
+
+    @staticmethod
+    def summarize(host, replies):
+        """Builds a PingSummary from a list of PingReply objects collected so far."""
+        summary = PingSummary(host=host)
+        rttBuffer = [r.rtt_ms for r in replies if r.success and r.rtt_ms is not None]
+
+        summary.replies = replies
+        summary.packets_transmitted = len(replies)
+        summary.packets_received = len(rttBuffer)
+        summary.packets_lost = summary.packets_transmitted - len(rttBuffer)
+        summary.percent_loss = (
+            100.0 if summary.packets_transmitted == 0
+            else 100.0 * summary.packets_lost / summary.packets_transmitted
+        )
+        if rttBuffer:
+            summary.rtt_min = min(rttBuffer)
+            summary.rtt_avg = statistics.mean(rttBuffer)
+            summary.rtt_max = max(rttBuffer)
+
+        return summary
 
 
 # #################################################################################################################### #
@@ -665,39 +696,8 @@ class IcmpHelperLibrary:
 def main():
     icmpHelperPing = IcmpHelperLibrary()
 
-
-    # Choose one of the following by uncommenting out the line
-    # icmpHelperPing.sendPing("209.233.126.254")
-    # icmpHelperPing.sendPing("www.google.com")
-    # icmpHelperPing.sendPing("gaia.cs.umass.edu")
-    # icmpHelperPing.traceRoute("164.151.129.20")
-    # icmpHelperPing.traceRoute("122.56.99.243")
-    # icmpHelperPing.traceRoute("google.com")
     # icmpHelperPing.traceRoute("8.8.8.8")
     icmpHelperPing.sendPing("8.8.8.8")
-
-    # unreachable maybe
-    # icmpHelperPing.traceRoute("210.152.243.234")                    # Samina
-    # icmpHelperPing.traceRoute("122.56.99.243")                      # Samina
-    # icmpHelperPing.traceRoute("200.10.227.250")                     # assignment example        / worked
-    # icmpHelperPing.traceRoute("169.254.0.3")                        # Ed discussion
-
-    # google
-    # icmpHelperPing.traceRoute("www.google.com")
-    # icmpHelperPing.traceRoute("142.251.32.110")
-    # icmpHelperPing.traceRoute("172.217.164.174")
-    # icmpHelperPing.traceRoute("66.249.77.224")
-
-    # icmpHelperPing.traceRoute("128.119.245.12")                         # gaia.cs.umass.edu
-    # icmpHelperPing.traceRoute("172.67.144.43")                          # www.msuiit.edu.ph
-    # icmpHelperPing.traceRoute("172.67.204.195")                         # www.cu.edu.ph
-    # icmpHelperPing.traceRoute("153.127.164.138")                        # www.hit-u.ac.jp
-
-
-
-
-    # icmpHelperPing.traceRoute("209.233.126.254")
-
 
 if __name__ == "__main__":
     main()
