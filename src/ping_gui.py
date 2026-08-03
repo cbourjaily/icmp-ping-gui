@@ -1,15 +1,25 @@
 from dataclasses import field
 import asyncio
 import threading
-from IcmpHelperLibrary import IcmpHelperLibrary
+from icmp_ping_backend import IcmpHelperLibrary
 
 import flet as ft
 
 @ft.control
 class Ping(ft.Container):
+    """
+    Graphical interface for sending ICMP ping requests and displaying the
+    resulting replies and summary statistics.
+    """
+
 
     def init(self):
-        self.ping_count = 4
+        """
+        Initializes the application's controls, event handlers and layout.
+        """
+
+        self.ping_count = 4                             # Default ping count.
+        self.width = 650
         self.stop_event = threading.Event()
         self.icmp_helper = IcmpHelperLibrary()
         self.address = ft.TextField(expand=True)
@@ -20,33 +30,40 @@ class Ping(ft.Container):
             width=600,
             height=300,
         )
+
         # Button for starting ping
         self.ping_button = ft.FloatingActionButton(
             content="Ping",
             on_click=self.ping_clicked
         )
-        # button for stopping ping
+
+        # Button for stopping ping
         self.stop_button = ft.FilledButton(
             content=ft.Text("Stop"),
             on_click=self.stop_clicked,
             disabled=True,
         )
+
         # Check-box for specifying pings
         self.count_check_box = ft.Checkbox(
             label="Specify ping count",
             value=False,
             on_change=self.count_changed,
         )
+
         # Field for entering ping count
         self.count_field = ft.TextField(
             label="Count",
             width=100,
         )
-        # checkbox for infinite pings
+
+        # Check-box for infinite pings
         self.infinity_check_box = ft.Checkbox(
             label="Ping until stopped",
             value=False,
         )
+
+        # Dropdown for entering ping count and infinity option
         self.count_options_row = ft.Row(
             visible=False,
             controls=[
@@ -55,7 +72,8 @@ class Ping(ft.Container):
                 self.infinity_check_box,
             ]
         )
-        self.width = 520
+
+        # Display fields for GUI
         self.content = ft.SelectionArea(
             content = ft.Column(
                 controls = [
@@ -73,19 +91,29 @@ class Ping(ft.Container):
         )
 
 
-    """
-    Makes available options for entering ping count.
-    """
 
     def count_changed(self, e):
+        """
+        Show or hide dropdown for inputting ping count controls.
+
+        :param e: Checkbox change event.
+        """
+
         self.count_options_row.visible = self.count_check_box.value
         self.update()
 
-    """
-    Starts ping sequence.
-    """
 
     async def ping_clicked(self, e):
+        """
+        Send ICMP echo requests and display the results.
+
+        Performs the ping operation asynchronously, updates the interface with
+        each reply as it is received, and displays summary statistics when the
+        sequence completes or is sotopped by the user.
+
+        :param e: The button click event.
+        """
+
         self.stop_event.clear()
 
         infinite = self.infinity_check_box.value
@@ -150,24 +178,27 @@ class Ping(ft.Container):
         self.stop_button.disabled = True
         self.update()
 
-    """
-    Signals ongoing ping to stop running.
-    """
+
     def stop_clicked(self, e):
+        """
+        Signal ongoing ping to stop running.
+        :param e: Stop button event.
+        """
+
         self.stop_event.set()
         self.stop_button.disabled = True
         self.update()
 
 
 def main(page: ft.Page):
-    page.title = "Ping"
+    """
+    Configure and initialize the application's main page.
+
+    :param page: The Flet page that hosts the application.
+    """
+    page.title = "ICMP Ping GUI"
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.add(Ping())
-
-
-
-
-
 
 
 if __name__ == "__main__":
