@@ -1,4 +1,3 @@
-from dataclasses import field
 import asyncio
 import threading
 from icmp_ping_backend import IcmpHelperLibrary
@@ -13,15 +12,17 @@ class Ping(ft.Container):
     """
 
 
-    def init(self):
+    def init(self) -> None:
         """
-        Initializes the application's controls, event handlers and layout.
+        Initializes the application's controls, event handlers, and layout.
         """
 
         self.ping_count = 4                             # Default ping count.
         self.width = 650
+        self.padding = ft.Padding.only(top=100)
         self.stop_event = threading.Event()
         self.icmp_helper = IcmpHelperLibrary()
+        self._saved_count_value = ""
         self.address = ft.TextField(expand=True)
         self.output = ft.ListView(
             expand=True,
@@ -61,6 +62,7 @@ class Ping(ft.Container):
         self.infinity_check_box = ft.Checkbox(
             label="Ping until stopped",
             value=False,
+            on_change=self.infinity_changed,
         )
 
         # Dropdown for entering ping count and infinity option
@@ -77,24 +79,52 @@ class Ping(ft.Container):
         self.content = ft.SelectionArea(
             content = ft.Column(
                 controls = [
-                    ft.Row(alignment=ft.MainAxisAlignment.CENTER, controls=[ft.Text("Ping", size=30)]),
-                    ft.Row(alignment=ft.MainAxisAlignment.CENTER,
-                        controls=[ft.Text("Enter a URL or IP address to ping", size=15)]),
-                    ft.Row(
-                        controls=[ft.Container(width=50), self.address, self.ping_button, self.stop_button]),
-                    ft.Row(alignment=ft.MainAxisAlignment.START,
-                           controls=[ft.Container(width=50), self.count_check_box]),
+                    # Top description
+                    ft.Container(
+                        padding=ft.Padding.only(right=75),
+                        content=ft.Row(alignment=ft.MainAxisAlignment.CENTER,
+                                       controls=[ft.Text("Enter a URL or IP address to ping", size=20)]),
+                    ),
+                    # Address input, ping button and stop button
+                    ft.Container(
+                        padding=ft.Padding.only(left=50),
+                        content=ft.Row(controls=[self.address, self.ping_button, self.stop_button]),
+                    ),
+                    # Specify ping count check-box
+                    ft.Container(
+                        padding=ft.Padding.only(left=50),
+                        content=ft.Row(alignment=ft.MainAxisAlignment.START, controls=[self.count_check_box]),
+                    ),
+                    # Count options
                     self.count_options_row,
-                    ft.Row(controls=[self.output]),
+                    # Output field
+                    ft.Container(
+                        padding=ft.Padding.only(top=5),
+                        content=ft.Row(controls=[ft.Container(width=50), self.output]),
+                    ),
                 ],
             )
         )
 
-
-
-    def count_changed(self, e):
+    def infinity_changed(self, e: ft.ControlEvent) -> None:
         """
-        Show or hide dropdown for inputting ping count controls.
+        Grey out the ping count field when infinite pinging is selected;
+        restore its previous value and interactivity when deselected.
+
+        :param e: Checkbox change event.
+        """
+
+        if self.infinity_check_box.value:
+            self._saved_count_value = self.count_field.value
+            self.count_field.disabled = True
+        else:
+            self.count_field.value = self._saved_count_value
+            self.count_field.disabled = False
+        self.update()
+
+    def count_changed(self, e: ft.ControlEvent) -> None:
+        """
+        Show or hide ping count controls.
 
         :param e: Checkbox change event.
         """
@@ -103,18 +133,26 @@ class Ping(ft.Container):
         self.update()
 
 
-    async def ping_clicked(self, e):
+    async def ping_clicked(self, e: ft.ControlEvent) -> None:
         """
-        Send ICMP echo requests and display the results.
+        Send ICMP Echo Requests and display the results.
 
-        Performs the ping operation asynchronously, updates the interface with
-        each reply as it is received, and displays summary statistics when the
-        sequence completes or is sotopped by the user.
+        Runs the ping operation asynchronously, updates the interface as each
+        reply is received, and displays summary statistics when the operation
+        completes or is stopped by the user.
 
         :param e: The button click event.
         """
 
         self.stop_event.clear()
+
+        host = self.address.value
+
+        if not host or not host.strip():
+            self.output.controls.clear()
+            self.output.controls.append(ft.Text("Enter a host or IP address to ping.", color=ft.Colors.RED))
+            self.update()
+            return
 
         infinite = self.infinity_check_box.value
 
@@ -126,6 +164,7 @@ class Ping(ft.Container):
                 self.output.controls.append(ft.Text("Enter a valid ping count.", color=ft.Colors.RED))
                 self.update()
                 return
+
         elif not infinite:
             self.ping_count = 4
 
@@ -135,18 +174,17 @@ class Ping(ft.Container):
         self.output.controls.append(ft.Text("Pinging..."))
         self.update()
 
-        curr_address = self.address.value
         replies = []
         seq = 0
-
         self.output.controls.clear()
+
         while True:
             if self.stop_event.is_set():
                 break
             if not infinite and seq >= self.ping_count:
                 break
 
-            reply = await asyncio.to_thread(self.icmp_helper.sendSinglePing, curr_address, seq)
+            reply = await asyncio.to_thread(self.icmp_helper.send_single_ping, host, seq)
             replies.append(reply)
 
             if reply.success:
@@ -160,7 +198,7 @@ class Ping(ft.Container):
 
             seq += 1
 
-        summary = self.icmp_helper.summarize(curr_address, replies)
+        summary = self.icmp_helper.summarize(host, replies)
 
         self.output.controls.append(ft.Divider())
         self.output.controls.append(ft.Text(
@@ -179,10 +217,13 @@ class Ping(ft.Container):
         self.update()
 
 
-    def stop_clicked(self, e):
+    def stop_clicked(self, e: ft.ControlEvent) -> None:
         """
-        Signal ongoing ping to stop running.
-        :param e: Stop button event.
+        Stop the current ping operation.
+
+        Signals the running ping loop to terminate and disables the Stop button.
+
+        :param e: Stop button click event.
         """
 
         self.stop_event.set()
@@ -190,12 +231,13 @@ class Ping(ft.Container):
         self.update()
 
 
-def main(page: ft.Page):
+def main(page: ft.Page) -> None:
     """
     Configure and initialize the application's main page.
 
     :param page: The Flet page that hosts the application.
     """
+
     page.title = "ICMP Ping GUI"
     page.horizontal_alignment = ft.CrossAxisAlignment.CENTER
     page.add(Ping())
