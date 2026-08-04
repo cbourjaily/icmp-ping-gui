@@ -17,7 +17,7 @@ import statistics
 import struct
 import threading
 import time
-from socket import AF_INET, IPPROTO_ICMP, IPPROTO_IP, IP_TTL, SOCK_DGRAM, SOCK_RAW, gethostbyname, socket, timeout
+from socket import AF_INET, IPPROTO_ICMP, IPPROTO_IP, IP_TTL, SOCK_DGRAM, gethostbyname, socket, timeout
 
 # For GUI integration
 from typing import Optional, List
@@ -301,13 +301,13 @@ class IcmpHelperLibrary:
             self.__pack_and_recalculate_checksum()
 
 
-        def send_echo_request(self, is_traceroute :bool=False) -> PingReply | None:
+        def send_echo_request(self) -> PingReply | None:
             """
             Send an ICMP Echo Request and process the reply.
 
-            :param is_traceroute:
-                If True, send the request using a raw socket for traceroute.
-                Otherwise, use a datagram ICMP socket for standard ping.
+            Uses an unprivileged datagram ICMP socket, so no elevated
+            permissions are required.
+
             :return:
                 A PingReply describing the received response, or None if no
                 matching reply is received.
@@ -317,22 +317,16 @@ class IcmpHelperLibrary:
                 raise ValueError("ICMP target address is not set.")
 
             my_socket = None
+            header_offset = 0
 
             try:
-                if is_traceroute:
-                    my_socket = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP)
-                    header_offset = 20
-                else:
-                    my_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
-                    header_offset = 0
-
+                my_socket = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
                 my_socket.settimeout(self.__ip_timeout)
                 my_socket.bind(("", 0))
                 my_socket.setsockopt(IPPROTO_IP, IP_TTL, struct.pack('I', self.get_ttl()))  # Unsigned int - 4 bytes
 
-                if not is_traceroute:
-                    actual_identifier = my_socket.getsockname()[1]    # kernal-assigned port = actual ICMP identifier
-                    self.set_packet_identifier(actual_identifier)
+                actual_identifier = my_socket.getsockname()[1]  # kernal-assigned port = actual ICMP identifier
+                self.set_packet_identifier(actual_identifier)
 
                 my_socket.sendto(b''.join([self.__header, self.__data]), (self.__destination_ip_address, 0))
                 time_sent = time.time()
@@ -391,7 +385,7 @@ class IcmpHelperLibrary:
                                  error_message="Request timed out")
             except PermissionError:
                 return PingReply(sequence_number=self.get_packet_sequence_number(), success=False,
-                                 error_message="Permission denied (raw sockets require sudo)")
+                                 error_message="Permission denied while opening ICMP socket")
 
             finally:
                 if my_socket is not None:
@@ -654,68 +648,6 @@ class IcmpHelperLibrary:
         return summary
 
 
-    """
-    Code citation:
-    While implementing this method, I referred to the `traceroute.c` source
-    file distributed in `traceroute.tar.Z` from ftp.ee.lbl.gov as a reference
-    for the traceroute algorithm and packet processing logic.
-    """
-
-    def __send_icmp_traceroute(self, host: str) -> None:
-        """
-        Perform an ICMP-based traceroute to the specified host.
-
-        Sends ICMP Echo Requests with progressively increasing TTL values to
-        discover each hop along the network path until the destination is
-        reached or the maximum TTL is exceeded.
-
-        :param host: Hostname or IP address of the destination.
-        :return: None.
-        """
-        
-        print("send_icmp_traceroute Started...") if self.__debug_enabled else 0
-
-        print(f"Traceroute to ({host}) {host}")
-
-        # Loop while code 11 time exceeded replies are received and code 3 destination unreachable are not
-        is_end = False       # Flag for destination reached indicated by type 3
-        ttl = 1               # For incrementing TTL
-        i = 0                   # For sequence number
-        max_ttl = 30
-
-        while not is_end and ttl <= max_ttl:
-             # Build packet
-            icmp_packet = IcmpHelperLibrary.IcmpPacket()
-
-             # Set TTL
-            icmp_packet.set_ttl(ttl)
-
-            random_identifier = (os.getpid() & 0xffff)      # Get as 16 bit number. Limit based on ICMP header standards
-            packet_identifier = random_identifier
-            packet_sequence_number = i
-
-            icmp_packet.build_packet_echo_request(packet_identifier, packet_sequence_number)  # Build ICMP for IP payload
-            icmp_packet.set_icmp_target(host)
-
-            # Get icmp_type as return value in order to detect end
-            icmp_type = icmp_packet.send_echo_request(is_traceroute=True)                     # Build IP
-
-            # Stop immediately if lacking permission to open a raw socket
-            if icmp_type == "PERMISSION_DENIED":
-                print("Traceroute aborted: elevated privileges required.")
-                break
-
-            # toggle is_end if the icmp_type is 3 or 0 (type zero returns RTT in send_echo_request() which is a float)
-            if icmp_type == 3 or icmp_type == 0 or isinstance(icmp_type, float):
-                is_end = True
-
-            icmp_packet.print_icmp_packet_header_hex() if self.__debug_enabled else 0
-            icmp_packet.print_icmp_packet_hex() if self.__debug_enabled else 0
-
-            ttl += 1
-            i += 1
-
-
     """IcmpHelperLibrary public helper methods."""
 
     def send_ping(self, target_host: str, ping_count: int=4, stop_event: threading.Event | None = None) -> PingSummary:
@@ -729,21 +661,6 @@ class IcmpHelperLibrary:
         """
 
         return self.__send_icmp_echo_request(target_host, ping_count, stop_event)
-
-
-    def traceroute(self, target_host:str) -> None:
-        """
-        Perform an ICMP-based traceroute to the specified host.
-
-        Sends ICMP Echo Requests with increasing TTL values to identify the
-        network path between the local machine and the destination host.
-
-        :param target_host: Hostname or IP address of the destination.
-        :return: None.
-        """
-
-        print("traceroute Started...") if self.__debug_enabled else 0
-        self.__send_icmp_traceroute(target_host)
 
 
     def send_single_ping(self, host:str, sequence_number:int) -> PingReply | None:
@@ -794,15 +711,13 @@ class IcmpHelperLibrary:
         return summary
 
 
-# #################################################################################################################### #
-# main()                                                                                                               #
-#                                                                                                                      #
-# #################################################################################################################### #
-def main():
-    icmpHelperPing = IcmpHelperLibrary()
+def main() -> None:
+    """
+    Run the ICMP ping example.
+    """
 
-    # icmpHelperPing.traceroute("8.8.8.8")
-    icmpHelperPing.send_ping("8.8.8.8")
+    icmp_helper = IcmpHelperLibrary()
+    icmp_helper.send_ping("8.8.8.8")
 
 if __name__ == "__main__":
     main()
