@@ -1,5 +1,5 @@
 [project]
-name = "icmp-helper"
+name = "icmp-ping-gui"
 version = "0.1.0"
 description = "A cross-platform ICMP ping utility with a desktop GUI, built with Python and Flet."
 readme = "README.md"
@@ -34,3 +34,8 @@ copyright = "Copyright (C) 2026 by Christopher Vote"
 
 [tool.flet.app]
 path = "src"
+module = "ping_gui"
+name = "icmp-ping-gui"
+include = [
+	"icmp_ping_backend.py"
+]

@@ -34,3 +34,7 @@ storage/
 # OS files
 .DS_Store
 
+# Release artifacts
+# Release artifacts
+README.txt
+*.tar.gz
