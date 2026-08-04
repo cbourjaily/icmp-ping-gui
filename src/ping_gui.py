@@ -23,7 +23,7 @@ class Ping(ft.Container):
         self.stop_event = threading.Event()
         self.icmp_helper = IcmpHelperLibrary()
         self._saved_count_value = ""
-        self.address = ft.TextField(expand=True)
+        self.address = ft.TextField(expand=True, on_submit=self.ping_clicked)
         self.output = ft.ListView(
             expand=True,
             spacing=2,
