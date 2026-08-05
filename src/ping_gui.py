@@ -188,7 +188,7 @@ class Ping(ft.Container):
             replies.append(reply)
 
             if reply.success:
-                text = f"seq={reply.sequence_number} ttl={reply.ttl} rtt={reply.rtt_ms:.0f}ms {reply.address}"
+                text = f"seq={reply.sequence_number + 1} ttl={reply.ttl} rtt={reply.rtt_ms:.0f}ms {reply.address}"
                 color = ft.Colors.GREEN
             else:
                 text = f"seq={reply.sequence_number} {reply.error_message or 'failed'}"
