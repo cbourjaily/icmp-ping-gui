@@ -28,8 +28,7 @@ class Ping(ft.Container):
             expand=True,
             spacing=2,
             auto_scroll=True,
-            width=600,
-            height=300,
+            height=350,
         )
 
         # Button for starting ping
@@ -100,7 +99,11 @@ class Ping(ft.Container):
                     # Output field
                     ft.Container(
                         padding=ft.Padding.only(top=5),
-                        content=ft.Row(controls=[ft.Container(width=50), self.output]),
+                        content=ft.Row(
+                            expand=True,
+                            controls=[
+                                ft.Container(width=50),
+                                self.output]),
                     ),
                 ],
             )
